@@ -11,21 +11,21 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #f8fafc;
       margin: 0;
-      padding: 30px 20px;
+      padding: 24px 16px;
       color: #1e293b;
     }
 
     .header-container {
       max-width: 1200px;
-      margin: 0 auto 30px auto;
+      margin: 0 auto 24px auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 15px;
+      gap: 12px;
     }
 
-    h1 { margin: 0; font-size: 1.6rem; font-weight: 700; }
+    h1 { margin: 0; font-size: 1.5rem; font-weight: 700; }
     
     .status-badge {
       display: inline-flex;
@@ -34,7 +34,7 @@
       padding: 6px 14px;
       border-radius: 20px;
       font-size: 0.85rem;
-      font-weight: 500;
+      font-weight: 600;
       background-color: #e2e8f0;
       color: #475569;
     }
@@ -43,8 +43,8 @@
 
     .grid-productos {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-      gap: 24px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
       max-width: 1200px;
       margin: 0 auto;
     }
@@ -57,23 +57,17 @@
       display: flex;
       flex-direction: column;
       box-shadow: 0 2px 4px rgba(0,0,0,0.04);
-      animation: fadeIn 0.4s ease-out;
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(10px); }
-      to { opacity: 1; transform: translateY(0); }
     }
 
     .card-img-wrapper {
       width: 100%;
-      height: 220px;
+      height: 200px;
       background-color: #ffffff;
       display: flex;
       align-items: center;
       justify-content: center;
       border-bottom: 1px solid #f1f5f9;
-      padding: 12px;
+      padding: 10px;
     }
 
     .card img {
@@ -83,17 +77,17 @@
     }
 
     .card-body {
-      padding: 16px;
+      padding: 14px;
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 6px;
     }
 
     .sku-badge {
       font-size: 0.75rem;
       background: #f1f5f9;
       color: #64748b;
-      padding: 3px 8px;
+      padding: 2px 6px;
       border-radius: 4px;
       align-self: flex-start;
       font-weight: 700;
@@ -101,7 +95,7 @@
     }
 
     .card-title {
-      font-size: 1.05rem;
+      font-size: 1rem;
       font-weight: 600;
       margin: 0;
       text-transform: capitalize;
@@ -112,7 +106,7 @@
       justify-content: space-between;
       align-items: center;
       margin-top: 6px;
-      font-size: 0.85rem;
+      font-size: 0.8rem;
     }
 
     .card-tag {
@@ -128,38 +122,35 @@
       color: #d97706;
       font-weight: 600;
       text-transform: uppercase;
-      font-size: 0.75rem;
     }
 
     #debug-box {
       max-width: 1200px;
-      margin: 40px auto 0 auto;
+      margin: 30px auto 0 auto;
       background: #0f172a;
       color: #38bdf8;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-      padding: 16px;
+      font-family: monospace;
+      padding: 14px;
       border-radius: 8px;
-      font-size: 0.85rem;
-      line-height: 1.5;
+      font-size: 0.8rem;
+      line-height: 1.4;
       white-space: pre-wrap;
     }
   </style>
 
-  <!-- SDK oficial de Supabase -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <!-- Usamos CDN directo de unpkg -->
+  <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 
   <div class="header-container">
     <h1>📦 Catálogo de Productos (PWA)</h1>
-    <div id="conexion-estado" class="status-badge">Conectando...</div>
+    <div id="conexion-estado" class="status-badge">Inicializando...</div>
   </div>
 
-  <div id="contenedor-productos" class="grid-productos">
-    <!-- Se generarán aquí las tarjetas de los productos -->
-  </div>
+  <div id="contenedor-productos" class="grid-productos"></div>
 
-  <div id="debug-box">Registro de actividad (Debug):</div>
+  <div id="debug-box">Registro de actividad:</div>
 
   <script>
     const SUPABASE_URL = "https://bnsvaplxdcejuexvtnes.supabase.co";
@@ -173,14 +164,6 @@
       console.log(msg);
       debugBox.textContent += "\n> " + msg;
     }
-
-    if (!window.supabase) {
-      log("ERROR: No se pudo cargar el SDK de Supabase.");
-      estadoBadge.className = "status-badge error";
-      estadoBadge.textContent = "Error al cargar SDK";
-    }
-
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     function crearTarjeta(producto, alPrincipio = false) {
       const card = document.createElement("div");
@@ -208,55 +191,72 @@
       }
     }
 
-    async function iniciar() {
-      log("Conectando con Supabase...");
+    async function arrancar() {
+      log("Verificando librería Supabase...");
       
-      const { data, error } = await supabase
-        .from('productos')
-        .select('*')
-        .order('id', { ascending: false });
-
-      if (error) {
-        log("ERROR al leer datos: " + error.message);
-        log("DETALLE: " + (error.details || error.hint || "Revisa si la tabla 'productos' existe y tiene activada la política SELECT de RLS."));
+      // Asegurar que la librería exista
+      const supabaseLib = window.supabase || (window.supabasejs ? window.supabasejs : null);
+      
+      if (!supabaseLib) {
+        log("ERROR: No se pudo cargar el script de Supabase. Revisa bloqueadores de anuncios o el CDN.");
         estadoBadge.className = "status-badge error";
-        estadoBadge.textContent = "Error de permisos/tabla";
+        estadoBadge.textContent = "Error SDK CDN";
         return;
       }
 
-      log(`Conexión exitosa. Se encontraron ${data.length} productos.`);
-      estadoBadge.className = "status-badge online";
-      estadoBadge.textContent = `🟢 En línea (${data.length} productos)`;
+      log("Creando cliente de Supabase...");
+      const client = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-      if (data.length === 0) {
-        contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 40px 0;'>No hay productos todavía en la base de datos.</p>";
-      } else {
-        contenedor.innerHTML = "";
-        data.forEach(p => crearTarjeta(p));
-      }
+      log("Consultando tabla 'productos'...");
+      try {
+        const { data, error } = await client
+          .from('productos')
+          .select('*')
+          .order('id', { ascending: false });
 
-      // Suscripción Realtime
-      log("Activando escucha Realtime...");
-      supabase
-        .channel('canal-catalogo')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'productos' },
-          (payload) => {
-            log(`✨ Nuevo producto recibido en vivo: ${payload.new.sku}`);
-            const avisoVacio = contenedor.querySelector("p");
-            if (avisoVacio) {
-              contenedor.innerHTML = "";
+        if (error) {
+          log("ERROR Supabase: " + error.message);
+          log("HINT/CODE: " + (error.hint || error.code || "Permiso denegado por RLS"));
+          estadoBadge.className = "status-badge error";
+          estadoBadge.textContent = "Error de Permisos (RLS)";
+          return;
+        }
+
+        log(`Datos recibidos con éxito: ${data.length} productos.`);
+        estadoBadge.className = "status-badge online";
+        estadoBadge.textContent = `🟢 En línea (${data.length} productos)`;
+
+        if (data.length === 0) {
+          contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 30px;'>La tabla está vacía. No hay filas en 'productos'.</p>";
+        } else {
+          contenedor.innerHTML = "";
+          data.forEach(p => crearTarjeta(p));
+        }
+
+        // Realtime
+        client
+          .channel('cambios-pwa')
+          .on(
+            'postgres_changes',
+            { event: 'INSERT', schema: 'public', table: 'productos' },
+            (payload) => {
+              log(`✨ Nueva foto añadida: ${payload.new.sku}`);
+              const msgVacio = contenedor.querySelector("p");
+              if (msgVacio) contenedor.innerHTML = "";
+              crearTarjeta(payload.new, true);
             }
-            crearTarjeta(payload.new, true);
-          }
-        )
-        .subscribe((status) => {
-          log("Estado canal Realtime: " + status);
-        });
+          )
+          .subscribe();
+
+      } catch (err) {
+        log("Excepción general: " + err.message);
+        estadoBadge.className = "status-badge error";
+        estadoBadge.textContent = "Error de conexión";
+      }
     }
 
-    iniciar();
+    // Esperar a que el DOM cargue
+    window.addEventListener('DOMContentLoaded', arrancar);
   </script>
 </body>
 </html>
