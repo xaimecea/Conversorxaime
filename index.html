@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PWA - Catálogo de Productos</title>
+  
+  <!-- Estilos rápidos para ver la cuadrícula de productos -->
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background-color: #f4f4f7;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 24px;
+    }
+
+    .grid-productos {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+    }
+
+    .card img {
+      width: 100%;
+      height: 200px;
+      object-fit: contain;
+      background-color: #ffffff;
+      border-bottom: 1px solid #f0f0f0;
+    }
+
+    .card-body {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .sku-tag {
+      font-size: 0.75rem;
+      background: #eef2ff;
+      color: #4f46e5;
+      padding: 2px 8px;
+      border-radius: 4px;
+      align-self: flex-start;
+      font-weight: bold;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .card-badge {
+      font-size: 0.8rem;
+      color: #eab308;
+      font-weight: 500;
+    }
+  </style>
+
+  <!-- 1. Cargar el SDK oficial de Supabase para navegador -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+  <h1>📦 Catálogo de Productos (PWA)</h1>
+  <div id="contenedor-productos" class="grid-productos">
+    <!-- Aquí se pintarán las fichas automáticamente -->
+  </div>
+
+  <script>
+    // ================= CONFIGURACIÓN =================
+    const SUPABASE_URL = "https://TU_PROYECTO.supabase.co";
+    const SUPABASE_ANON_KEY = "TU_ANON_PUBLIC_KEY"; // Aquí usa la anon_key (pública)
+    // =================================================
+
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const contenedor = document.getElementById("contenedor-productos");
+
+    // Función para renderizar una tarjeta de producto en el DOM
+    function renderizarProducto(producto, alInicio = false) {
+      const card = document.createElement("div");
+      card.className = "card";
+      card.id = `prod-${producto.id}`;
+      
+      card.innerHTML = `
+        <img src="${producto.foto_url}" alt="${producto.nombre}" loading="lazy" />
+        <div class="card-body">
+          <span class="sku-tag">${producto.sku}</span>
+          <h3 class="card-title">${producto.nombre}</h3>
+          <span class="card-badge">🟡 Estado: ${producto.estado}</span>
+        </div>
+      `;
+
+      if (alInicio && contenedor.firstChild) {
+        contenedor.insertBefore(card, contenedor.firstChild);
+      } else {
+        contenedor.appendChild(card);
+      }
+    }
+
+    // 1. Cargar los productos existentes al abrir la app
+    async function cargarProductos() {
+      const { data, error } = await supabase
+        .from('productos')
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) {
+        console.error("Error al cargar productos:", error);
+        return;
+      }
+
+      contenedor.innerHTML = "";
+      data.forEach(prod => renderizarProducto(prod));
+    }
+
+    // 2. Suscribirse a cambios en tiempo real (cuando Python suba una foto)
+    function escucharNuevasAltas() {
+      supabase
+        .channel('cambios-productos')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'productos' },
+          (payload) => {
+            console.log("¡Nuevo producto recibido desde Python!", payload.new);
+            // Renderizamos la nueva ficha arriba del todo sin recargar
+            renderizarProducto(payload.new, true);
+          }
+        )
+        .subscribe();
+    }
+
+    // Iniciar
+    cargarProductos();
+    escucharNuevasAltas();
+  </script>
+</body>
+</html>
