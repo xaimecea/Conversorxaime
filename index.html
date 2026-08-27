@@ -11,13 +11,13 @@
       font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background-color: #f8fafc;
       margin: 0;
-      padding: 24px 16px;
+      padding: 20px 16px;
       color: #1e293b;
     }
 
     .header-container {
       max-width: 1200px;
-      margin: 0 auto 24px auto;
+      margin: 0 auto 20px auto;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -25,7 +25,7 @@
       gap: 12px;
     }
 
-    h1 { margin: 0; font-size: 1.5rem; font-weight: 700; }
+    h1 { margin: 0; font-size: 1.4rem; font-weight: 700; }
     
     .status-badge {
       display: inline-flex;
@@ -41,10 +41,25 @@
     .status-badge.online { background-color: #dcfce7; color: #15803d; }
     .status-badge.error { background-color: #fee2e2; color: #b91c1c; }
 
+    .btn-sync {
+      background-color: #4f46e5;
+      color: #ffffff;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-sync:active { transform: scale(0.98); }
+
     .grid-productos {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 16px;
       max-width: 1200px;
       margin: 0 auto;
     }
@@ -61,7 +76,7 @@
 
     .card-img-wrapper {
       width: 100%;
-      height: 200px;
+      height: 180px;
       background-color: #ffffff;
       display: flex;
       align-items: center;
@@ -77,14 +92,14 @@
     }
 
     .card-body {
-      padding: 14px;
+      padding: 12px;
       display: flex;
       flex-direction: column;
       gap: 6px;
     }
 
     .sku-badge {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       background: #f1f5f9;
       color: #64748b;
       padding: 2px 6px;
@@ -95,7 +110,7 @@
     }
 
     .card-title {
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       margin: 0;
       text-transform: capitalize;
@@ -105,15 +120,15 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-top: 6px;
-      font-size: 0.8rem;
+      margin-top: 4px;
+      font-size: 0.75rem;
     }
 
     .card-tag {
       background: #e0e7ff;
       color: #4338ca;
-      padding: 2px 8px;
-      border-radius: 6px;
+      padding: 2px 6px;
+      border-radius: 4px;
       font-weight: 500;
       text-transform: capitalize;
     }
@@ -138,14 +153,16 @@
     }
   </style>
 
-  <!-- Usamos CDN directo de unpkg -->
   <script src="https://unpkg.com/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 </head>
 <body>
 
   <div class="header-container">
-    <h1>📦 Catálogo de Productos (PWA)</h1>
-    <div id="conexion-estado" class="status-badge">Inicializando...</div>
+    <h1>📦 Catálogo de Productos</h1>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <button id="btn-sincronizar" class="btn-sync">🔄 Sincronizar Storage</button>
+      <div id="conexion-estado" class="status-badge">Inicializando...</div>
+    </div>
   </div>
 
   <div id="contenedor-productos" class="grid-productos"></div>
@@ -159,11 +176,14 @@
     const debugBox = document.getElementById("debug-box");
     const estadoBadge = document.getElementById("conexion-estado");
     const contenedor = document.getElementById("contenedor-productos");
+    const btnSync = document.getElementById("btn-sincronizar");
 
     function log(msg) {
       console.log(msg);
       debugBox.textContent += "\n> " + msg;
     }
+
+    const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     function crearTarjeta(producto, alPrincipio = false) {
       const card = document.createElement("div");
@@ -191,72 +211,106 @@
       }
     }
 
-    async function arrancar() {
-      log("Verificando librería Supabase...");
-      
-      // Asegurar que la librería exista
-      const supabaseLib = window.supabase || (window.supabasejs ? window.supabasejs : null);
-      
-      if (!supabaseLib) {
-        log("ERROR: No se pudo cargar el script de Supabase. Revisa bloqueadores de anuncios o el CDN.");
+    async function cargarCatalogo() {
+      log("Consultando tabla 'productos'...");
+      const { data, error } = await client
+        .from('productos')
+        .select('*')
+        .order('id', { ascending: false });
+
+      if (error) {
+        log("ERROR: " + error.message);
         estadoBadge.className = "status-badge error";
-        estadoBadge.textContent = "Error SDK CDN";
+        estadoBadge.textContent = "Error al leer";
         return;
       }
 
-      log("Creando cliente de Supabase...");
-      const client = supabaseLib.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      log(`Productos cargados: ${data.length}`);
+      estadoBadge.className = "status-badge online";
+      estadoBadge.textContent = `🟢 En línea (${data.length})`;
 
-      log("Consultando tabla 'productos'...");
-      try {
-        const { data, error } = await client
-          .from('productos')
-          .select('*')
-          .order('id', { ascending: false });
-
-        if (error) {
-          log("ERROR Supabase: " + error.message);
-          log("HINT/CODE: " + (error.hint || error.code || "Permiso denegado por RLS"));
-          estadoBadge.className = "status-badge error";
-          estadoBadge.textContent = "Error de Permisos (RLS)";
-          return;
-        }
-
-        log(`Datos recibidos con éxito: ${data.length} productos.`);
-        estadoBadge.className = "status-badge online";
-        estadoBadge.textContent = `🟢 En línea (${data.length} productos)`;
-
-        if (data.length === 0) {
-          contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 30px;'>La tabla está vacía. No hay filas en 'productos'.</p>";
-        } else {
-          contenedor.innerHTML = "";
-          data.forEach(p => crearTarjeta(p));
-        }
-
-        // Realtime
-        client
-          .channel('cambios-pwa')
-          .on(
-            'postgres_changes',
-            { event: 'INSERT', schema: 'public', table: 'productos' },
-            (payload) => {
-              log(`✨ Nueva foto añadida: ${payload.new.sku}`);
-              const msgVacio = contenedor.querySelector("p");
-              if (msgVacio) contenedor.innerHTML = "";
-              crearTarjeta(payload.new, true);
-            }
-          )
-          .subscribe();
-
-      } catch (err) {
-        log("Excepción general: " + err.message);
-        estadoBadge.className = "status-badge error";
-        estadoBadge.textContent = "Error de conexión";
+      if (data.length === 0) {
+        contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 30px;'>No hay productos en la base de datos. Pulsa 'Sincronizar Storage' si ya subiste fotos.</p>";
+      } else {
+        contenedor.innerHTML = "";
+        data.forEach(p => crearTarjeta(p));
       }
     }
 
-    // Esperar a que el DOM cargue
-    window.addEventListener('DOMContentLoaded', arrancar);
+    // Función para leer las fotos de Storage y crear las filas que falten
+    async function sincronizarDesdeStorage() {
+      log("Buscando fotos en el Storage 'productos'...");
+      btnSync.disabled = true;
+      btnSync.textContent = "Sincronizando...";
+
+      try {
+        // 1. Listar carpetas o archivos en la raíz del bucket
+        const { data: carpetas, error: errStorage } = await client.storage.from('productos').list();
+        if (errStorage) throw errStorage;
+
+        let totalSincronizados = 0;
+
+        for (const item of carpetas) {
+          // Si es una carpeta (ej. 'bolso', 'chaqueta')
+          if (!item.id) {
+            const categoria = item.name;
+            const { data: fotos } = await client.storage.from('productos').list(categoria);
+            
+            if (fotos) {
+              for (const foto of fotos) {
+                if (foto.name.endsWith('.webp') || foto.name.endsWith('.jpg') || foto.name.endsWith('.png')) {
+                  const sku = foto.name.split('.')[0];
+                  const rutaCompleta = `${categoria}/${foto.name}`;
+                  const { data: { publicUrl } } = client.storage.from('productos').getPublicUrl(rutaCompleta);
+
+                  // Insertar en la base de datos si no existe
+                  const { error: errInsert } = await client.from('productos').upsert({
+                    sku: sku,
+                    nombre: `Nuevo ${categoria.charAt(0).toUpperCase() + categoria.slice(1)}`,
+                    categoria: categoria,
+                    foto_url: publicUrl,
+                    precio: 0,
+                    stock: 1,
+                    estado: 'borrador'
+                  }, { onConflict: 'sku' });
+
+                  if (!errInsert) totalSincronizados++;
+                }
+              }
+            }
+          }
+        }
+
+        log(`Sincronización finalizada: ${totalSincronizados} fotos registradas en BD.`);
+        await cargarCatalogo();
+      } catch (err) {
+        log("Error en sincronización: " + err.message);
+      } finally {
+        btnSync.disabled = false;
+        btnSync.textContent = "🔄 Sincronizar Storage";
+      }
+    }
+
+    btnSync.addEventListener('click', sincronizarDesdeStorage);
+
+    window.addEventListener('DOMContentLoaded', () => {
+      cargarCatalogo();
+
+      // Realtime
+      client
+        .channel('cambios-pwa')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'productos' },
+          (payload) => {
+            log(`✨ Nuevo producto añadido: ${payload.new.sku}`);
+            const msg = contenedor.querySelector("p");
+            if (msg) contenedor.innerHTML = "";
+            crearTarjeta(payload.new, true);
+          }
+        )
+        .subscribe();
+    });
   </script>
 </body>
 </html>
