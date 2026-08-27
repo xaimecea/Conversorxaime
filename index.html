@@ -45,16 +45,17 @@
       background-color: #4f46e5;
       color: #ffffff;
       border: none;
-      padding: 8px 16px;
+      padding: 10px 18px;
       border-radius: 8px;
-      font-size: 0.85rem;
+      font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       gap: 6px;
+      box-shadow: 0 2px 4px rgba(79, 70, 229, 0.3);
     }
-    .btn-sync:active { transform: scale(0.98); }
+    .btn-sync:active { transform: scale(0.96); }
 
     .grid-productos {
       display: grid;
@@ -212,79 +213,111 @@
     }
 
     async function cargarCatalogo() {
-      log("Consultando tabla 'productos'...");
       const { data, error } = await client
         .from('productos')
         .select('*')
         .order('id', { ascending: false });
 
       if (error) {
-        log("ERROR: " + error.message);
+        log("ERROR cargando catálogo: " + error.message);
         estadoBadge.className = "status-badge error";
         estadoBadge.textContent = "Error al leer";
         return;
       }
 
-      log(`Productos cargados: ${data.length}`);
+      log(`Productos en base de datos: ${data.length}`);
       estadoBadge.className = "status-badge online";
       estadoBadge.textContent = `🟢 En línea (${data.length})`;
 
       if (data.length === 0) {
-        contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 30px;'>No hay productos en la base de datos. Pulsa 'Sincronizar Storage' si ya subiste fotos.</p>";
+        contenedor.innerHTML = "<p style='grid-column: 1/-1; text-align: center; color: #94a3b8; padding: 30px;'>Pulsa el botón morado '🔄 Sincronizar Storage' arriba para cargar las fotos existentes.</p>";
       } else {
         contenedor.innerHTML = "";
         data.forEach(p => crearTarjeta(p));
       }
     }
 
-    // Función para leer las fotos de Storage y crear las filas que falten
+    // Función recursiva para buscar archivos en todas las subcarpetas
     async function sincronizarDesdeStorage() {
-      log("Buscando fotos en el Storage 'productos'...");
+      log("Iniciando escaneo profundo del Storage...");
       btnSync.disabled = true;
-      btnSync.textContent = "Sincronizando...";
+      btnSync.textContent = "Escaneando...";
 
       try {
-        // 1. Listar carpetas o archivos en la raíz del bucket
-        const { data: carpetas, error: errStorage } = await client.storage.from('productos').list();
-        if (errStorage) throw errStorage;
+        const { data: elementosRaiz, error: errRaiz } = await client.storage.from('productos').list('', {
+          limit: 100,
+          offset: 0
+        });
 
-        let totalSincronizados = 0;
+        if (errRaiz) throw new Error("Error listando raíz: " + errRaiz.message);
 
-        for (const item of carpetas) {
-          // Si es una carpeta (ej. 'bolso', 'chaqueta')
-          if (!item.id) {
-            const categoria = item.name;
-            const { data: fotos } = await client.storage.from('productos').list(categoria);
+        let fotosEncontradas = [];
+
+        for (const item of elementosRaiz) {
+          // Si no tiene id, metadata o extensión, es una subcarpeta (ej. 'bolso', 'chaqueta')
+          if (!item.id || !item.name.includes('.')) {
+            const carpeta = item.name;
+            log(`Explorando subcarpeta '${carpeta}'...`);
             
-            if (fotos) {
-              for (const foto of fotos) {
-                if (foto.name.endsWith('.webp') || foto.name.endsWith('.jpg') || foto.name.endsWith('.png')) {
-                  const sku = foto.name.split('.')[0];
-                  const rutaCompleta = `${categoria}/${foto.name}`;
-                  const { data: { publicUrl } } = client.storage.from('productos').getPublicUrl(rutaCompleta);
+            const { data: archivosSub, error: errSub } = await client.storage.from('productos').list(carpeta, {
+              limit: 100
+            });
 
-                  // Insertar en la base de datos si no existe
-                  const { error: errInsert } = await client.from('productos').upsert({
-                    sku: sku,
-                    nombre: `Nuevo ${categoria.charAt(0).toUpperCase() + categoria.slice(1)}`,
-                    categoria: categoria,
-                    foto_url: publicUrl,
-                    precio: 0,
-                    stock: 1,
-                    estado: 'borrador'
-                  }, { onConflict: 'sku' });
-
-                  if (!errInsert) totalSincronizados++;
+            if (!errSub && archivosSub) {
+              for (const f of archivosSub) {
+                if (f.name.match(/\.(webp|jpg|jpeg|png)$/i)) {
+                  fotosEncontradas.push({
+                    categoria: carpeta,
+                    archivo: f.name,
+                    ruta: `${carpeta}/${f.name}`
+                  });
                 }
               }
             }
+          } else if (item.name.match(/\.(webp|jpg|jpeg|png)$/i)) {
+            // Foto en la raíz
+            fotosEncontradas.push({
+              categoria: 'general',
+              archivo: item.name,
+              ruta: item.name
+            });
           }
         }
 
-        log(`Sincronización finalizada: ${totalSincronizados} fotos registradas en BD.`);
+        log(`Fotos detectadas en Storage: ${fotosEncontradas.length}`);
+
+        if (fotosEncontradas.length === 0) {
+          log("No se encontraron fotos con formato webp/jpg/png en el bucket.");
+          return;
+        }
+
+        let creados = 0;
+        for (const foto of fotosEncontradas) {
+          const sku = foto.archivo.split('.')[0];
+          const { data: { publicUrl } } = client.storage.from('productos').getPublicUrl(foto.ruta);
+
+          const { error: errUpsert } = await client.from('productos').upsert({
+            sku: sku,
+            nombre: `Nuevo ${foto.categoria.charAt(0).toUpperCase() + foto.categoria.slice(1)}`,
+            categoria: foto.categoria,
+            foto_url: publicUrl,
+            precio: 0,
+            stock: 1,
+            estado: 'borrador'
+          }, { onConflict: 'sku' });
+
+          if (errUpsert) {
+            log(`Aviso en ${sku}: ${errUpsert.message}`);
+          } else {
+            creados++;
+          }
+        }
+
+        log(`✅ Sincronizados ${creados} productos con éxito.`);
         await cargarCatalogo();
+
       } catch (err) {
-        log("Error en sincronización: " + err.message);
+        log("ERROR: " + err.message);
       } finally {
         btnSync.disabled = false;
         btnSync.textContent = "🔄 Sincronizar Storage";
@@ -295,21 +328,6 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       cargarCatalogo();
-
-      // Realtime
-      client
-        .channel('cambios-pwa')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'productos' },
-          (payload) => {
-            log(`✨ Nuevo producto añadido: ${payload.new.sku}`);
-            const msg = contenedor.querySelector("p");
-            if (msg) contenedor.innerHTML = "";
-            crearTarjeta(payload.new, true);
-          }
-        )
-        .subscribe();
     });
   </script>
 </body>
